@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Moonraker API Server for Klipper
+Documentation=https://moonraker.readthedocs.io/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ klipper_user }}
+SupplementaryGroups=moonraker-admin
+RemainAfterExit=no
+WorkingDirectory={{ klipper_home }}/moonraker
+ExecStart={{ klipper_home }}/moonraker-env/bin/python {{ klipper_home }}/moonraker/moonraker/moonraker.py \
+    -d {{ printer_data }}
+Restart=always
+RestartSec=10
+# Keep moonraker off klippy's dedicated core (3): klippy is pinned there with SCHED_FIFO,
+# so moonraker's API/websocket bursts can't preempt the MCU move-queue feed.
+CPUAffinity=0 1 2
+
+[Install]
+WantedBy=multi-user.target

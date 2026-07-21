@@ -1,0 +1,102 @@
+{
+    "type": "machine",
+    "name": "Prusa Core One (Klipper)",
+    "from": "User",
+    "instantiation": "true",
+    "inherits": "",
+    "printer_technology": "FFF",
+    "printer_structure": "corexy",
+    "gcode_flavor": "klipper",
+    "nozzle_diameter": [
+        "0.4"
+    ],
+    "printable_area": [
+        "0x0",
+        "250x0",
+        "250x220",
+        "0x220"
+    ],
+    "printable_height": "270",
+    "bed_exclude_area": [],
+    "bed_custom_model": "",
+    "bed_custom_texture": "",
+    "machine_max_speed_x": [
+        "350"
+    ],
+    "machine_max_speed_y": [
+        "350"
+    ],
+    "machine_max_speed_z": [
+        "30"
+    ],
+    "machine_max_speed_e": [
+        "50"
+    ],
+    "machine_max_acceleration_x": [
+        "10000"
+    ],
+    "machine_max_acceleration_y": [
+        "10000"
+    ],
+    "machine_max_acceleration_z": [
+        "1000"
+    ],
+    "machine_max_acceleration_e": [
+        "1250"
+    ],
+    "machine_max_acceleration_extruding": [
+        "10000"
+    ],
+    "machine_max_acceleration_retracting": [
+        "1250"
+    ],
+    "machine_max_acceleration_travel": [
+        "10000"
+    ],
+    "machine_max_jerk_x": [
+        "10"
+    ],
+    "machine_max_jerk_y": [
+        "10"
+    ],
+    "machine_max_jerk_z": [
+        "2"
+    ],
+    "machine_max_jerk_e": [
+        "10"
+    ],
+    "max_layer_height": [
+        "0.3"
+    ],
+    "min_layer_height": [
+        "0.08"
+    ],
+    "retraction_length": [
+        "0.8"
+    ],
+    "retraction_speed": [
+        "35"
+    ],
+    "deretraction_speed": [
+        "25"
+    ],
+    "retraction_minimum_travel": [
+        "0.5"
+    ],
+    "z_hop": [
+        "1.0"
+    ],
+    "machine_start_gcode": "PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]{if chamber_temperature[0] > 25} CHAMBER_MIN={chamber_temperature[0] - 5} SOAK=5{endif}\nSET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]",
+    "machine_end_gcode": "PRINT_END",
+    "before_layer_change_gcode": "PLR_CHECKPOINT\n_ACCEL_TAPER Z=[layer_z]",
+    "layer_change_gcode": "SET_PRINT_STATS_INFO CURRENT_LAYER=[layer_num]",
+    "change_filament_gcode": "",
+    "machine_pause_gcode": "PAUSE",
+    "default_print_profile": "",
+    "default_filament_profile": [
+        ""
+    ],
+    "printer_notes": [
+        "PRINTER_MODEL_COREONE\nHF_NOZZLE\nABRASIVE_NOZZLE\nPG\nNO_TEMPLATES"
+    ]
+}

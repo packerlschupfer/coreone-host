@@ -1,0 +1,9 @@
+[Unit]
+Description=Klipper MCU auto-recover after a printer power-cycle or USB re-enumeration
+# Started on-demand by udev (99-klipper-mcu-recover.rules) when a Klipper serial
+# re-enumerates. Oneshot: runs the recover script and exits. Runs as root (no
+# User=) so the escalation path can `systemctl restart klipper`.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/klipper-mcu-recover.sh

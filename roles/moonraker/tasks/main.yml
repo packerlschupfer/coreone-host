@@ -1,0 +1,120 @@
+---
+# Moonraker — the API server Mainsail and OrcaSlicer talk to (:7125).
+
+- name: Install moonraker system dependencies
+  ansible.builtin.apt:
+    name:
+      - python3-virtualenv
+      - libopenjp2-7
+      - libsodium-dev
+      - zlib1g-dev
+      - libjpeg-dev
+      - liblmdb-dev
+      - libcurl4-openssl-dev
+      - libssl-dev
+      - libffi-dev
+      - packagekit
+    state: present
+
+- name: Create moonraker-admin group (referenced by the systemd unit)
+  ansible.builtin.group:
+    name: moonraker-admin
+    system: true
+
+- name: Clone Moonraker
+  become: true
+  become_user: "{{ klipper_user }}"
+  ansible.builtin.git:
+    repo: "{{ moonraker_repo }}"
+    dest: "{{ klipper_home }}/moonraker"
+    version: "{{ moonraker_branch }}"
+    update: false
+  register: moonraker_clone
+
+- name: Create moonraker virtualenv
+  become: true
+  become_user: "{{ klipper_user }}"
+  ansible.builtin.command:
+    cmd: python3 -m venv {{ klipper_home }}/moonraker-env
+    creates: "{{ klipper_home }}/moonraker-env/bin/python"
+
+- name: Install moonraker Python requirements
+  become: true
+  become_user: "{{ klipper_user }}"
+  ansible.builtin.pip:
+    requirements: "{{ klipper_home }}/moonraker/scripts/moonraker-requirements.txt"
+    virtualenv: "{{ klipper_home }}/moonraker-env"
+  when: moonraker_clone is changed
+
+# (soft_abort.py is now committed in the moonraker FORK at moonraker_branch, so
+# the clone above already provides it — no separate component deploy needed.)
+
+- name: Exclude Moongate's symlinked component from Moonraker's git status
+  # Moongate symlinks moongate.py into moonraker/components/ (Moonraker loads
+  # components only from there — no out-of-tree path), so git sees it untracked and
+  # flips the update_manager 'moonraker' updater to is_valid=False. A local per-clone
+  # exclude (mirrors klipper's loadcell_pa_probe.py in ~/klipper/.git/info/exclude)
+  # keeps it valid; re-added here so a moonraker re-clone doesn't lose it. Using
+  # .git/info/exclude (not the fork's .gitignore) keeps the moongate concern out of
+  # the moonraker repo.
+  ansible.builtin.lineinfile:
+    path: "{{ klipper_home }}/moonraker/.git/info/exclude"
+    line: "moonraker/components/moongate.py"
+    state: present
+  become: true
+  become_user: "{{ klipper_user }}"
+  when: moongate_enabled | default(false)
+
+- name: Deploy moonraker.conf
+  ansible.builtin.template:
+    src: moonraker.conf.j2
+    dest: "{{ printer_data }}/config/moonraker.conf"
+    owner: "{{ klipper_user }}"
+    group: "{{ klipper_group }}"
+    mode: "0644"
+  notify: Restart moonraker
+
+- name: Allow moonraker to manage these services without sudo
+  ansible.builtin.copy:
+    dest: "{{ printer_data }}/moonraker.asvc"
+    owner: "{{ klipper_user }}"
+    group: "{{ klipper_group }}"
+    mode: "0644"
+    content: |
+      klipper
+      moonraker
+
+- name: Install moonraker systemd unit
+  ansible.builtin.template:
+    src: moonraker.service.j2
+    dest: /etc/systemd/system/moonraker.service
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable and start moonraker
+  ansible.builtin.systemd:
+    name: moonraker
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# Without a PolicyKit rule, Moonraker's systemd_dbus provider is not authorized to
+# restart klipper.service -> POST /machine/services/restart returns 500. This is
+# Moonraker's own maintained generator; it writes a rule scoped to the
+# moonraker-admin group (already on the unit). Fixes the UI "one-click" MCU
+# recovery / service restart. Must run as the moonraker user (the script refuses
+# to run as root and uses passwordless sudo internally).
+- name: Check for existing Moonraker PolicyKit rule
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/share/polkit-1/rules.d/moonraker.rules
+    - /etc/polkit-1/rules.d/moonraker.rules
+  register: moonraker_polkit
+
+- name: Authorize Moonraker to manage services via PolicyKit
+  become: true
+  become_user: "{{ klipper_user }}"
+  ansible.builtin.command:
+    cmd: "{{ klipper_home }}/moonraker/scripts/set-policykit-rules.sh -z"
+  when: moonraker_polkit.results | selectattr('stat.exists') | list | length == 0

@@ -1,0 +1,8 @@
+---
+# Install with: ansible-galaxy collection install -r requirements.yml
+# (both are already present on this control node, but pin them for portability)
+collections:
+  - name: ansible.posix      # authorized_key
+    version: ">=1.5.0"
+  - name: community.general  # handy modules if the roles grow
+    version: ">=8.0.0"

@@ -1,0 +1,65 @@
+---
+# Klippy host install. NOTE: this is the *host* side only — no MCU firmware
+# is built here (the xBuddy F427 .bin is built/flashed from the desktop via
+# build.sh + openocd, per the port plan). So we skip arm-none-eabi/avr toolchains.
+
+- name: Install klippy host dependencies
+  ansible.builtin.apt:
+    name:
+      - libffi-dev
+      - libusb-1.0-0-dev
+      - libncurses-dev
+      # numpy/scipy (input-shaper + loadcell notch filter): use Debian's matched,
+      # ARM-prebuilt pair via apt instead of pip — avoids numpy/scipy ABI version
+      # mismatches (scipy built for numpy 2.x vs a pip-pinned numpy 1.x).
+      - python3-numpy
+      - python3-scipy
+    state: present
+
+- name: Clone Klipper
+  become: true
+  become_user: "{{ klipper_user }}"
+  ansible.builtin.git:
+    repo: "{{ klipper_repo }}"
+    dest: "{{ klipper_home }}/klipper"
+    version: "{{ klipper_branch }}"
+    update: false        # don't auto-pull on every run; bump deliberately
+  register: klipper_clone
+
+- name: Create klippy virtualenv (with access to system site-packages for numpy/scipy)
+  become: true
+  become_user: "{{ klipper_user }}"
+  ansible.builtin.command:
+    cmd: python3 -m venv --system-site-packages {{ klipper_home }}/klippy-env
+    creates: "{{ klipper_home }}/klippy-env/bin/python"
+
+- name: Ensure existing klippy-env can see system (apt) packages
+  become: true
+  become_user: "{{ klipper_user }}"
+  ansible.builtin.lineinfile:
+    path: "{{ klipper_home }}/klippy-env/pyvenv.cfg"
+    regexp: '^include-system-site-packages\s*='
+    line: "include-system-site-packages = true"
+  notify: restart klipper
+
+- name: Install klippy Python requirements
+  become: true
+  become_user: "{{ klipper_user }}"
+  ansible.builtin.pip:
+    requirements: "{{ klipper_home }}/klipper/scripts/klippy-requirements.txt"
+    virtualenv: "{{ klipper_home }}/klippy-env"
+  when: klipper_clone is changed
+
+- name: Install klipper systemd unit
+  ansible.builtin.template:
+    src: klipper.service.j2
+    dest: /etc/systemd/system/klipper.service
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable and start klipper (idles in no-MCU holding state until the port is ready)
+  ansible.builtin.systemd:
+    name: klipper
+    enabled: true
+    state: started
+    daemon_reload: true

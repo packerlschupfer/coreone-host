@@ -1,0 +1,18 @@
+---
+# ustreamer MJPEG camera streamer (feeds printwatch + Mainsail via nginx /webcam/).
+#
+# The camera is the ELP USBFHD01M-L170 (OV2710), which outputs MJPEG in hardware.
+# ustreamer relays it WITHOUT re-encoding -> near-zero CPU. Do NOT switch to
+# YUYV/software encoding: that is the CPU hog that risks "MCU Timer too close".
+
+# Device node. /dev/video0 is the live default. The L170 exposes no serial, so
+# /dev/v4l/by-id is empty -- for stability across reboots / re-enumeration, pin the
+# USB by-path instead (stable as long as the cam stays in the same physical port):
+#   ls /dev/v4l/by-path/ | grep usb | grep index0
+# then override webcam_device in host_vars/klippy.yml with that path.
+webcam_device: /dev/video0
+
+webcam_resolution: 1280x720
+webcam_fps: 15
+webcam_host: 127.0.0.1        # reached only via the nginx /webcam/ proxy
+webcam_port: 8080

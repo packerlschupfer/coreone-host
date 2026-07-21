@@ -1,0 +1,25 @@
+---
+# Camera streaming for printwatch (AI print monitoring on the desktop) + Mainsail.
+# ustreamer serves MJPEG on 127.0.0.1:{{ webcam_port }}; the mainsail role's nginx
+# config proxies it at /webcam/. MJPEG hardware passthrough -> near-zero CPU.
+
+- name: Install ustreamer
+  ansible.builtin.apt:
+    name: ustreamer
+    state: present
+
+- name: Install ustreamer systemd unit
+  ansible.builtin.template:
+    src: ustreamer.service.j2
+    dest: /etc/systemd/system/ustreamer.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart ustreamer
+
+- name: Enable and start ustreamer
+  ansible.builtin.systemd:
+    name: ustreamer
+    enabled: true
+    state: started
+    daemon_reload: true

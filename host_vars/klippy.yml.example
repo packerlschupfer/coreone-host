@@ -1,0 +1,21 @@
+---
+# Copy this file to  host_vars/klippy.yml  and fill in YOUR values.
+# host_vars/klippy.yml is gitignored, so your real values are never committed.
+# These override the placeholders in group_vars/all.yml + inventory.ini.
+
+ansible_host: 192.168.1.50          # your Pi's IP, or klipper.local (mDNS)
+lan_subnet: "192.168.1.0/24"        # your LAN subnet — Moonraker trusts this
+# Optional: extra trusted subnets (e.g. a second VLAN), appended after lan_subnet.
+# lan_subnets_extra:
+#   - "192.168.2.0/24"
+# board id from:  ls /dev/serial/by-id/*
+mcu_serial: "/dev/serial/by-id/usb-Klipper_stm32f427xx_XXXXXXXXXXXXXXXXXXXXXXXX-if00"
+
+# Optional: track a Mainsail FORK's releases instead of upstream (custom build).
+# Leave unset to use the official mainsail (the group_vars default).
+# mainsail_repo: "youruser/mainsail"
+
+# Optional: enable the Moongate remote-access plugin on this host. When true, the
+# moonraker role templates moongate's [update_manager] section (converge-safe) and
+# excludes its symlinked component from git status. Install Moongate separately.
+# moongate_enabled: true

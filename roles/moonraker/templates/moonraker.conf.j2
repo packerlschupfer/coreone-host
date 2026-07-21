@@ -1,0 +1,84 @@
+# {{ ansible_managed }}
+[server]
+host: 0.0.0.0
+port: {{ moonraker_port }}
+klippy_uds_address: {{ printer_data }}/comms/klippy.sock
+
+[authorization]
+# LAN-only trust: the desktop + OrcaSlicer live on {{ lan_subnet }}.
+# This keeps the host reachable without login prompts from the LAN while
+# refusing anything off-subnet. Do NOT widen this to 0.0.0.0/0.
+cors_domains:
+    *.local
+    http://*.local
+    http://app.fluidd.xyz
+    https://my.mainsail.xyz
+trusted_clients:
+    127.0.0.1
+    {{ lan_subnet }}
+{% for subnet in lan_subnets_extra | default([]) %}
+    {{ subnet }}
+{% endfor %}
+
+[file_manager]
+enable_object_processing: True
+
+[octoprint_compat]
+# Lets OrcaSlicer's "OctoPrint" upload path work against Moonraker.
+
+[history]
+
+[update_manager]
+channel: dev
+refresh_interval: 168
+# No background refresh/git-fetch: it spikes CPU and has starved klippy mid-print
+# ("Timer too close"). Updates are checked/applied manually from the UI when idle.
+enable_auto_refresh: False
+
+[update_manager mainsail]
+type: web
+channel: stable
+repo: {{ mainsail_repo }}
+path: {{ mainsail_dir }}
+
+# Track the Core One Klipper FORK (committed port) as a git_repo, not vanilla
+# Klipper. The fork has real upstream ancestry so this shows CLEAN (no "dirty"
+# hot-patch). Private repo -> the Pi authenticates via its read-only deploy key.
+[update_manager klipper]
+type: git_repo
+path: {{ klipper_home }}/klipper
+origin: {{ klipper_repo }}
+primary_branch: {{ klipper_branch }}
+managed_services: klipper
+
+# Track Moonraker's OWN repo as the Core One FORK on branch 'coreone', NOT stock
+# upstream. Without this, base-config defaults to arksine/moonraker + branch 'master';
+# a UI "recover" would then git-checkout the fork's clean upstream mirror ('master'
+# EXISTS here) and silently swap the Pi onto stock Moonraker -- dropping soft_abort,
+# the core-one version parsing, and the update_manager fix. type/path stay auto-detected.
+[update_manager moonraker]
+origin: {{ moonraker_repo }}
+primary_branch: {{ moonraker_branch }}
+
+[machine]
+provider: systemd_dbus
+
+# Custom component (roles/moonraker/files/soft_abort.py): exposes
+# POST /machine/soft_abort -> klippy soft_cancel/abort (out-of-band, mutex-free).
+[soft_abort]
+{# Moongate remote-access plugin (installer-managed component). Sections templated
+   here so a `--tags moonraker` converge doesn't wipe them. Rendered ONLY when
+   moongate_enabled; output matches the installer's sections byte-for-byte. #}
+{% if moongate_enabled | default(false) %}
+
+[moongate]
+# Moongate pairing + remote access plugin
+
+[update_manager moongate]
+type: git_repo
+path: {{ moongate_dir }}
+origin: {{ moongate_repo }}
+primary_branch: {{ moongate_branch }}
+managed_services: moonraker
+install_script: klipper-plugin/update.sh
+{% endif %}

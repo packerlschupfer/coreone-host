@@ -1,0 +1,52 @@
+---
+# Deploy the real Prusa Core One+ Klipper config (xBuddy F427 port).
+#
+# Split by mutability:
+#   boards/xbuddy.cfg : Ansible-OWNED hardware config. Force-updated every run; the
+#                       [mcu] serial is templated from group_vars `mcu_serial`.
+#                       Klipper never mutates it (SAVE_CONFIG overrides live in
+#                       printer.cfg), so force is safe.
+#   h5/extension.cfg  : H503 extension config. Inert until its [include] in
+#                       printer.cfg is uncommented; deployed so it's ready.
+#   printer.cfg       : the klippy ENTRYPOINT. klippy appends its SAVE_CONFIG block
+#                       (PID, probe z_offset, bed_mesh, input_shaper) here, so we
+#                       deploy it ONCE (force:false) and never clobber it thereafter.
+
+- name: Ensure config subdirs exist (boards/, h5/)
+  ansible.builtin.file:
+    path: "{{ printer_data }}/config/{{ item }}"
+    state: directory
+    owner: "{{ klipper_user }}"
+    group: "{{ klipper_group }}"
+    mode: "0755"
+  loop:
+    - boards
+    - h5
+
+- name: Deploy hardware config boards/xbuddy.cfg ([mcu] serial from mcu_serial)
+  ansible.builtin.template:
+    src: boards/xbuddy.cfg.j2
+    dest: "{{ printer_data }}/config/boards/xbuddy.cfg"
+    owner: "{{ klipper_user }}"
+    group: "{{ klipper_group }}"
+    mode: "0644"
+  notify: restart klipper
+
+- name: Deploy H503 extension config (inert until [include]d)
+  ansible.builtin.copy:
+    src: h5/extension.cfg
+    dest: "{{ printer_data }}/config/h5/extension.cfg"
+    owner: "{{ klipper_user }}"
+    group: "{{ klipper_group }}"
+    mode: "0644"
+  notify: restart klipper
+
+- name: Deploy the real printer.cfg (once; klippy owns it + appends SAVE_CONFIG)
+  ansible.builtin.copy:
+    src: printer.cfg
+    dest: "{{ printer_data }}/config/printer.cfg"
+    owner: "{{ klipper_user }}"
+    group: "{{ klipper_group }}"
+    mode: "0644"
+    force: false      # never clobber once klippy has written its SAVE_CONFIG block
+  notify: restart klipper

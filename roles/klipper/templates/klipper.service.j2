@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Klipper 3D Printer Firmware (host)
+Documentation=https://www.klipper3d.org/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ klipper_user }}
+RemainAfterExit=no
+WorkingDirectory={{ klipper_home }}/klipper
+ExecStart={{ klipper_home }}/klippy-env/bin/python {{ klipper_home }}/klipper/klippy/klippy.py \
+    {{ printer_data }}/config/printer.cfg \
+    -l {{ printer_data }}/logs/klippy.log \
+    -a {{ printer_data }}/comms/klippy.sock
+Restart=always
+RestartSec=10
+# Real-time priority: klippy must feed the MCU move queue on time or the MCU shuts
+# down with "Timer too close" / "Missed scheduling" when bursty userland steals the
+# CPU or a scheduling-latency spike drains its lookahead buffer (seen even at low load).
+# Pin klippy to a dedicated core (3) + SCHED_FIFO so the kernel wakes it ahead of normal
+# tasks; moonraker/ustreamer are pinned to 0-2 (soft isolation) to keep core 3 effectively
+# klippy-only. Stronger: add isolcpus=3 + irqaffinity=0-2 to cmdline (separate, needs reboot).
+# Nice is a no-op under FIFO but kept harmless; OOMScoreAdjust keeps the OOM killer off it.
+CPUAffinity=3
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=50
+Nice=-10
+OOMScoreAdjust=-900
+
+[Install]
+WantedBy=multi-user.target

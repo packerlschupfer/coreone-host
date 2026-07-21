@@ -1,0 +1,9 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart moonraker
+  ansible.builtin.service:
+    name: moonraker
+    state: restarted
