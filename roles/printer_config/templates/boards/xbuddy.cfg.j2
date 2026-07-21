@@ -1,0 +1,343 @@
+# Klipper config — Prusa Core One+ (xBuddy mainboard, STM32F427ZI)
+# =============================================================================
+# STATUS: PRODUCTION — validated on hardware (daily-printing machine). Pins, directions,
+# rotation_distance, limits, and TMC currents were checked against the xBuddy schematic and
+# proven through motion / heating / probing; see the per-section calibration notes + dates
+# below. Originally transcribed from the Buddy firmware pin audit (docs/klipper_pinmap.md).
+#
+# Build: F427 target, 12 MHz HSE, flash-start 0x08020200, USB PA11/PA12.
+#   see docs/klipper_build.md
+# Flash: BBF-via-USB (pack_fw.py --printer-type 7 --no-sign).
+#   see docs/klipper_flash_procedure.md
+# The xLCD touchscreen is NOT supported by Klipper (Phase-1 non-goal); it will
+# keep showing the bootloader screen. Use Fluidd/Mainsail/KlipperScreen later.
+# =============================================================================
+
+[mcu]
+# The chip-id segment is unique per board; find the real path on the host with:
+#   ls /dev/serial/by-id/usb-Klipper_stm32f427xx_*-if00
+serial: {{ mcu_serial }}
+restart_method: command
+
+[printer]
+kinematics: corexy           # Core One = CoreXY (VERIFIED Phase 2.6: G1 X turns both motors equally)
+max_velocity: 350            # Core One DEFAULT_MAX_FEEDRATE X/Y = 350 mm/s
+max_accel: 10000             # CEILING ONLY (Prusa Core One MAX_ACCELERATION 10000). The slicer drives
+                             # the working accel via M204 per feature; PRINT_START sets a 1500 default
+                             # (Prusa DEFAULT_TRAVEL_ACCELERATION) for absent-M204 prints. NOTE: ei/mzv
+                             # input-shaper smooths ~5500 -- keep slicer print-accel at/under that to
+                             # avoid ringing (the 10000 ceiling just enables fast travels). Homing accel
+                             # is pinned to 1250 in [gcode_macro G28], independent of this ceiling. (was 7000)
+max_z_velocity: 30           # Core One DEFAULT_MAX_FEEDRATE Z = 30 mm/s (HW max 35)
+max_z_accel: 1000            # Prusa Core One Z DEFAULT = HWLIMIT_NORMAL = 1000 (verified upstream Prusa-Firmware-Buddy); bed is the Z-mover
+square_corner_velocity: 7    # Prusa-like corners (Prusa CLASSIC_JERK X/Y=8; SCV~7 approximates it).
+                             # Raised from 5 (whose comment cited a wrong JUNCTION_DEVIATION premise).
+                             # PRINT_START also sets SCV=7 as the working value; drop toward 5 if corners ring.
+
+# Diagnostics: FORCE_MOVE (jog a single stepper without homing) + SET_KINEMATIC_POSITION
+# (fake a homed state to test kinematic X/Y directions before trusting sensorless homing).
+[force_move]
+enable_force_move: True
+
+# --- Steppers: TMC2130 over SPI3 ('spi3a' = SCK PC10 / MISO PC11 / MOSI PC12) -
+# SPI comms VERIFIED Phase 2.1. Currents/SGT/microsteps/steps-per-mm are now the
+# REAL Core One values from the firmware (Configuration_COREONE[_adv].h): 16
+# microsteps + interpolate, hold=run current. rotation_distance derived for 16
+# usteps: X/Y=32 (100 steps/mm), Z=8 (400), E=8.0 (400; direct e-step cal 2026-06-28). spreadCycle (no
+# stealthchop_threshold) so StallGuard sensorless homing works. NOTE: 'spi3a' not
+# 'spi3'. DIR inversions (! on dir_pin) still need empirical check on first homing.
+
+# FALLBACK adaptive sg_endstop for X -- NOT the active endstop: X homes on NATIVE diag1 +
+# calibrated driver_SGT (see [stepper_x] endstop_pin). Kept defined (fw stays in the binary)
+# so you can switch back by flipping endstop_pin. See [sg_endstop stepper_y] + docs/sg_endstop.md.
+[sg_endstop stepper_x]
+sg_threshold: 5            # absolute hard-stall FLOOR (the adaptive relative-drop trigger is primary)
+sample_count: 40
+sample_period: 0.0003
+home_accel_skip: 0.05
+drop_permille: 400        # stall = sg_result < 40% of the live decaying-max baseline (temp-robust)
+warmup: 256               # samples to learn the baseline before arming
+
+[stepper_x]
+step_pin: PD7
+dir_pin: !PD6              # VERIFIED Phase2.6: +X must go right (both CoreXY motors inverted)
+enable_pin: !PB9             # shared XY enable
+microsteps: 16
+rotation_distance: 32
+full_steps_per_rotation: 400  # Core One 0.9deg motors = 400 full steps/rev. WITHOUT this Klipper
+                              # defaults to 200 -> 100 steps/mm -> XY moves go HALF distance (CoreXY
+                              # 2x scale bug). 400*16/32 = 200 steps/mm = 1:1. Regressed out of overlay
+                              # 2026-06-21 (caused half-bed positioning), restored. See corexy-2x-scale-bug.
+endstop_pin: tmc2130_stepper_x:virtual_endstop   # native diag1 + calibrated driver_SGT (Prusa-style); MSCNT_HOME validate/retry on top. Fallback: sg_endstop_stepper_x:virtual_endstop (adaptive, fw stays in binary)
+position_endstop: 252       # VERIFIED: X homes toward +X (right); X_MAX_POS
+position_min: -2
+position_max: 252
+homing_speed: 70           # Prusa HOMING_FEEDRATE_XY 70 mm/s; coolstep_threshold gate sized for this
+homing_retract_dist: 0      # REQUIRED for sensorless (no second touch)
+
+[tmc2130 stepper_x]
+cs_pin: PG15
+spi_bus: spi3a
+diag1_pin: PG9
+run_current: 0.55           # Core One X_CURRENT 550 mA RMS
+sense_resistor: 0.22        # xBuddy X_RSENSE (Prusa); was defaulting to 0.11 = HALF current
+driver_SGT: -2              # 2026-07-11 X RE-CAL to -2: had drifted to bimodal 2-full-step +-512 @ SGT 0; CALIBRATE_HOMING_SGT showed -2 tight (+-16), matches Y/Prusa. (was 0, cal 2026-06-21.)
+                            # Reaches the frame reliably (8/8, no premature/ram); sub-step phase exact,
+                            # ~0.08mm worst-case full-step ambiguity (inherent sensorless; MSCNT_HOME
+                            # travel-validates). History: -2 once tripped early at full current until the
+                            # coolstep velocity gate fixed the standstill trip; a 2026-06-21 detour to SGT 0
+                            # then drifted bimodal, so the 2026-07-11 re-cal returned to -2 (stable with the gate).
+coolstep_threshold: 45      # StallGuard VELOCITY GATE (Prusa-style, the enabler for full current).
+                            # DIAG/stall armed only above ~54 mm/s real (Klipper's velocity->TCOOLTHRS
+                            # math assumes 13.2 MHz; our TMC clock is 16 MHz ext-osc, so real gate =
+                            # 45 * 16/13.2). Below that -- the accel ramp AND the retract->home reversal
+                            # transient -- StallGuard is DISABLED, killing the standstill false-trip that
+                            # made full current ram/premature. Non-zero so Klipper homing leaves TCOOLTHRS
+                            # alone instead of slamming it to 0xfffff (tmc.py handle_homing_move_begin).
+interpolate: True
+driver_TOFF: 3             # 24V chopper = Prusa CHOPPER_PRUSAMK3_24V {toff3,hend-2,hstrt6}
+driver_HSTRT: 5            # (TMC2130 register values: hstrt6-1, hend-2+3)
+driver_HEND: 1
+# Sensorless homing ALSO requires diag1_pushpull=1 at startup — see
+# [delayed_gcode set_diag_pushpull] at the end (no Klipper config option exists).
+
+# StallGuard-filtered sensorless endstop for Y (gold-standard homing) — reads the
+# TMC2130 sg_result over SPI during homing and triggers only after sample_count
+# consecutive sub-threshold reads (a SUSTAINED stall), filtering the per-belt-tooth
+# sg_result ripple (2mm = GT2 pitch) that false-triggers the native diag1 endstop.
+# See docs/sg_endstop.md. Tune sg_threshold/sample_count from SG_PROFILE AXIS=Y.
+[sg_endstop stepper_y]
+sg_threshold: 5            # absolute hard-stall FLOOR (the adaptive relative-drop trigger is primary)
+sample_count: 40         # consecutive sub-threshold reads required = a real held stall. 16
+                         # micro-tripped during the homing-accel ramp (low velocity -> invalid-low
+                         # sg_result for ~28 samples); 40 clears the ramp + margin (~0.6mm overrun on a real stall).
+sample_period: 0.0003    # 0.3ms between sg_result SPI reads
+home_accel_skip: 0.05    # THE KEY FIX (host-side, extras/sg_endstop.py): don't sample sg_result
+drop_permille: 400        # stall = sg_result < 40% of the live decaying-max baseline (temp-robust)
+warmup: 256               # samples to learn the baseline before arming
+                         # until ~50ms (~2mm) into the homing move — skips the low-velocity accel
+                         # ramp where sg_result is invalid-low and false-triggered (the "micro-
+                         # movement" home). VALIDATED 2026-06-15: Y homes to the front reliably on
+                         # plain G28. The move stays fully trsync-guarded; only the ramp is ignored.
+
+[stepper_y]
+step_pin: PD5
+dir_pin: !PD4              # VERIFIED Phase2.6: +Y must go back
+enable_pin: !PB9             # shared XY enable
+microsteps: 16
+rotation_distance: 32
+full_steps_per_rotation: 400  # Core One 0.9deg motors = 400 full steps/rev (see [stepper_x]); 1:1 scale.
+endstop_pin: tmc2130_stepper_y:virtual_endstop   # native diag1 + calibrated driver_SGT (Prusa-style); MSCNT_HOME validate/retry on top. Fallback: sg_endstop_stepper_y:virtual_endstop (adaptive, fw stays in binary)
+position_endstop: -19       # VERIFIED: Y homes toward -Y (front); Y_MIN_POS
+position_min: -19
+position_max: 221
+homing_speed: 70           # Prusa HOMING_FEEDRATE_XY 70 mm/s; coolstep_threshold gate sized for this
+homing_retract_dist: 0      # REQUIRED for sensorless
+
+[tmc2130 stepper_y]
+cs_pin: PB5
+spi_bus: spi3a
+diag1_pin: PE13
+run_current: 0.55           # Core One Y_CURRENT 550 mA RMS (Prusa); full current, gated by coolstep_threshold
+sense_resistor: 0.22        # xBuddy Y_RSENSE (Prusa); was defaulting to 0.11 = HALF current
+driver_SGT: -2              # 2026-06-27: 0 was too insensitive -> bimodal 2-full-step Y home (0.16mm); -2 (Prusa value) collapses it to <=1 full-step, snap finishes. X also -2 (2026-07-11 re-cal).
+                            # Reaches the front frame reliably (8/8 with backtravel); sub-step phase exact,
+                            # ~0.08mm worst-case full-step ambiguity (inherent sensorless; the coolstep
+                            # velocity gate makes -2 stable at full current).
+coolstep_threshold: 45      # StallGuard velocity gate (see [tmc2130 stepper_x] for the full rationale):
+                            # DIAG armed only above ~54 mm/s real -> skips the standstill/reversal false-trip.
+interpolate: True
+driver_TOFF: 3             # 24V chopper = Prusa CHOPPER_PRUSAMK3_24V {toff3,hend-2,hstrt6}
+driver_HSTRT: 5            # (TMC2130 register values: hstrt6-1, hend-2+3)
+driver_HEND: 1
+
+# --- StallGuard crash detection (Prusa "Crash Detection" equivalent) ----------
+# Armed for the duration of a print (CRASH_DETECT ENABLE=1 in PRINT_START, ENABLE=0
+# in PRINT_END). The MCU reads sg_result on these drivers during moves and shutdown()s
+# on a SUSTAINED stall = a nozzle/gantry crash. Velocity-gated by the driver's own
+# coolstep_threshold:45 (only valid above ~54 mm/s real) — protects fast travels,
+# NOT slow first-layer moves (same limit Prusa's crash detection has). Starts
+# INSENSITIVE on purpose; tune drop_permille/sg_threshold up after a no-false-trip
+# print + a controlled stall test. Pairs with extras/crash_detect.py + src/crash_detect.c.
+[crash_detect stepper_x]
+#tmc: tmc2130 stepper_x      # default; reads sg_result from the X driver
+sg_floor: 2                 # Prusa SG==0: stall when sg_result stays <= this ...
+sample_count: 4             # ... for this many consecutive samples (debounce) ...
+sample_period: 0.0003       # ... spaced this far apart (s)
+crash_sgt: 2                # TMC SGT on arm (Prusa CRASH_STALL_GUARD +2; higher=less sensitive)
+
+[crash_detect stepper_y]
+#tmc: tmc2130 stepper_y
+sg_floor: 2
+sample_count: 4
+sample_period: 0.0003
+crash_sgt: 2
+
+# Core One Z = a SINGLE Z motor (Configuration_COREONE: Z_DRIVER_TYPE only, Z2/Z3
+# unused, Z_STEPPER_AUTO_ALIGN off) → no z_tilt/QGL needed. Z homes DOWN (Z_HOME_DIR
+# -1) by pressing the nozzle onto the bed until the loadcell triggers.
+# ⚠ VERIFY Z DIRECTION before any probe: commanding Z toward 0 must move the nozzle
+# DOWN toward the bed. If it goes UP, flip dir_pin (!PD2) — a wrong sign drives the
+# nozzle into the gantry on G28.
+[stepper_z]
+step_pin: PD3
+dir_pin: PD2
+enable_pin: !PB8
+microsteps: 16
+rotation_distance: 8        # Core One Z 400 steps/mm @ 16 usteps
+endstop_pin: probe:z_virtual_endstop   # loadcell probe homes Z
+position_min: -5            # allow the nozzle to press into the bed for the force
+                            # trigger (matches Prusa Z_PROBE_LOW_POINT -5)
+position_max: 270           # Core One Z build height (~Z_SIZE)
+
+[tmc2130 stepper_z]
+cs_pin: PF15
+spi_bus: spi3a
+diag1_pin: PB4
+run_current: 0.6            # Core One Z_CURRENT 600 mA RMS
+sense_resistor: 0.22        # xBuddy Z_RSENSE (Prusa-authoritative). Klipper's tmc2130 DEFAULT is 0.11,
+                            # so without this we ran HALF current (~0.3A actual) -> weak Z, stalls after
+                            # Z_ALIGN. 0.22 makes run_current the real 0.6A.
+hold_current: 0.6           # = run (Prusa HOLD_MULTIPLIER 1); also caps idle hold below the ~0.96A
+                            # default-max at R=0.22 (Z leadscrew self-locks, so this is plenty).
+driver_SGT: 4              # Z_STALL_SENSITIVITY 4 (Z sensorless not used yet — loadcell probe)
+interpolate: True
+driver_TOFF: 3             # 24V chopper = Prusa CHOPPER_PRUSAMK3_24V {toff3,hend-2,hstrt6}
+driver_HSTRT: 5            # (TMC2130 register values: hstrt6-1, hend-2+3)
+driver_HEND: 1
+
+# Toolhead NTC pullup enable — Buddy holds EXTRUDER_SWITCH (PE14) LOW at boot to
+# switch in the hotend/heatsink NTC pullups (3V3_SWITCH). Required for PC0 above
+# to read; without it PC0 floats. (hwio_pindef.h: extruderSwitch=PE14, State::low)
+[output_pin extruder_switch]
+pin: PE14
+value: 0
+
+# --- Heater power stage: ARM IT (REQUIRED — without this the hotend won't heat) ---
+# The xBuddy gates the nozzle heater rail (24V2) behind a power-stage enable =
+# HEATER_ENABLE / Marlin PS_ON = PG10. Stock's Power::power_on() drives it HIGH
+# (PSU_ACTIVE_HIGH=1) to ARM the rail. VERIFIED on hardware: under stock the hotend
+# heats; our Klipper left PG10 low so the hotend got pwm but ZERO power (bed + motors
+# are on the always-on rail, which is why only the hotend was dead). Drive PG10 high.
+[output_pin heater_enable]
+pin: PG10
+value: 1                    # PSU_ACTIVE_HIGH=1 -> HIGH arms the heater power stage (24V2)
+
+# The xBuddy also latches heater overcurrent faults (heaterCurrentFault PG5 /
+# inputCurrentFault PG6); stock pulses faultMemoryReset (PG7, idle high) LOW->HIGH at
+# boot to clear them. Replicate the boot pulse. (hwio_pindef.h: faultMemoryReset = PG7.)
+[output_pin fault_reset]
+pin: PG7
+value: 1                    # idle high (stock init State::high)
+[delayed_gcode clear_heater_fault]
+initial_duration: 1.0
+gcode:
+    SET_PIN PIN=fault_reset VALUE=0
+    G4 P100
+    SET_PIN PIN=fault_reset VALUE=1
+
+[tmc2130 extruder]
+cs_pin: PF12
+spi_bus: spi3a
+diag1_pin: PD14
+sense_resistor: 0.22        # xBuddy HW sense R (like X/Y/Z) -- WAS MISSING -> Klipper defaulted 0.11 -> extruder ran HALF current (~225mA vs intended 450). Fixed 2026-06-27.
+run_current: 0.45           # Core One E0_CURRENT 450 mA RMS
+interpolate: True
+driver_TOFF: 3             # 24V chopper = Prusa CHOPPER_PRUSAMK3_24V {toff3,hend-2,hstrt6}
+driver_HSTRT: 5            # (TMC2130 register values: hstrt6-1, hend-2+3)
+driver_HEND: 1
+
+# Heater runaway protection (Klipper's equivalent of Prusa THERMAL_PROTECTION_*).
+# Hysteresis values mirror Prusa; check_gain_time loosened for the big 24V bed so a
+# slow warm-up doesn't false-trip "heater not heating at expected rate".
+[verify_heater extruder]
+hysteresis: 15              # Prusa THERMAL_PROTECTION_HYSTERESIS
+check_gain_time: 30
+[verify_heater heater_bed]
+hysteresis: 10             # Prusa THERMAL_PROTECTION_BED_HYSTERESIS
+check_gain_time: 90        # large bed heats slowly; Prusa BED_PERIOD is 20s but its
+                           # check semantics differ — be lenient to avoid false trips
+
+# --- Diagnostic temperature sensors (monitoring only) ------------------------
+# F427 die temperature — always available, no pin. Good health check + protects
+# against a runaway MCU.
+[temperature_sensor mcu]
+sensor_type: temperature_mcu
+max_temp: 90
+
+# Prusa also monitors BOARD temp (PF10/ADC1 CH8) and Nextruder HEATBREAK temp
+# (PA6/ADC1 CH6). ⚠ Both are read through Buddy's AdcMultiplexer/DMA scan — confirm
+# they're DIRECT STM32 ADC inputs (not behind an analog HWID/power mux) before
+# enabling, and confirm the NTC type. Heatbreak temp is what Prusa uses to spin the
+# hotend fan; until verified, the [heater_fan] (extension.cfg) keys off extruder temp.
+#[temperature_sensor board]
+#sensor_type: Generic 3950
+#sensor_pin: PF10
+#[temperature_sensor heatbreak]
+#sensor_type: Generic 3950
+#sensor_pin: PA6
+
+# --- Toolhead fans (on the F427 main board — NOT the extension) --------------
+# IMPORTANT: on the Core One+ the part-cooling + hotend fans run from the xBuddy
+# MAIN board (hwio_pindef.h, BOARD_IS_XBUDDY: fanPrintPwm PE11, fanHeatBreakPwm
+# PE9). Only the ENCLOSURE fans (chamber circulation + filtration) are on the H503
+# extension (h5/extension.cfg). So print cooling works WITHOUT the H503.
+# Both are DC fans PWM'd on the power line (Klipper soft PWM is fine).
+[fan]                              # part-cooling fan — M106/M107, slicer-driven
+pin: PE11
+kick_start_time: 0.5              # ensure a clean spin-up from stop
+off_below: 0.10                  # below ~10% a DC fan just stalls — treat as off
+# A SINGLE tach (PE10) is MUXED between both fans by PF13 (tachoSelectPrintFan), so
+# Klipper can monitor only one fan's RPM (it can't time-share the mux). Left off;
+# to watch the print fan, drive PF13 to its print-fan state and uncomment:
+tachometer_pin: PE10
+tachometer_ppr: 2
+
+[output_pin fan_tach_mux]         # PF13 high -> print-fan tach routed to PE10
+pin: PF13
+value: 1
+
+[heater_fan hotend_fan]           # heatbreak fan — auto-on with the hotend
+pin: PE9
+heater: extruder
+heater_temp: 50                  # Prusa EXTRUDER_AUTO_FAN_TEMPERATURE 50 °C
+fan_speed: 1.0                   # Prusa EXTRUDER_AUTO_FAN_SPEED 255 (full)
+kick_start_time: 0.5
+
+# --- Sensorless homing: DIAG push-pull fixup (REQUIRED) ----------------------
+# The X/Y DIAG lines have a board pullup (R16) and the TMC2130 DIAG output is
+# open-drain by default -> Klipper reads the endstop as permanently 'triggered'
+# -> G28 completes instantly with no motion. Klipper exposes NO config option for
+# diag1_pushpull, so force it push-pull at startup. WITHOUT this, sensorless
+# homing does NOT work on the Core One. (Verified fix, Phase 2.6.)
+[delayed_gcode set_diag_pushpull]
+initial_duration: 1.0
+gcode:
+    SET_TMC_FIELD STEPPER=stepper_x FIELD=diag1_pushpull VALUE=1
+    SET_TMC_FIELD STEPPER=stepper_y FIELD=diag1_pushpull VALUE=1
+
+# Probe-based Z homing: home Z by probing the bed (after X/Y sensorless home).
+# NOTE: Prusa Z-homes at (240,10) (near the home corner), but that's outside our
+# mesh area — Klipper is cleaner homing Z at the MESH reference (the z_offset and
+# the mesh zero are then the same point). So home Z at bed centre = the bed_mesh
+# zero_reference_position (125,110).
+[safe_z_home]
+home_xy_position: 125, 110        # GEOMETRIC bed centre = (X_BED_SIZE/2, Y_BED_SIZE/2) for the 250x220 bed
+                                  # (firmware-authoritative; was 125,105 = wrong 210-bed Y). = bed_mesh zero_reference_position
+speed: 50
+z_hop: 5           # SAFE homing value. (50 was tried for cleaning clearance but the unhomed safe_z_home branch hops the bed DOWN by z_hop each G28 -> creeps to the chamber floor + cripples far-bed homing. Do cleaning clearance via a separate park, not z_hop.)
+z_hop_speed: 10
+
+# Temperature-robust homing: re-home until the rotor lands at the calibrated phase (TMC
+# MSCNT) AND travel checks out — rejects a hot/noisy premature trip. extras/mscnt_home.py.
+# MSCNT_HOME AXIS=<a>; calibrate cold via MSCNT_HOME_CALIBRATE. See docs / mscnt-homing-port.
+[mscnt_home stepper_x]
+calibrated_phase: 536        # re-cal 2026-07-11 after belt/grub work (X home shifted +512 = 2 full-steps -> stale 24); MSCNT_SNAP_CALIBRATE, moff 0 confirmed.
+phase_snap_sign: -1
+phase_snap: True             # bounded sub-step phase-snap (X scatter <=1 full-step -> snap to 0)
+retract_dist: 8             # shorter calibration backtravel (was 15) — matches Prusa-style short retract
+[mscnt_home stepper_y]
+calibrated_phase: 24         # re-cal 2026-06-27 at SGT-2 (was 968, stale)
+phase_snap_sign: 1
+phase_snap: True             # bounded sub-step phase-snap (with SGT-2 keeping Y scatter <=1 full-step)
+retract_dist: 8

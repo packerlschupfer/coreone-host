@@ -1,0 +1,13 @@
+*.retry
+*.log
+.vault_pass
+*.bak-sync
+*.presync-*
+
+# Python bytecode cache (e.g. from editing the moonraker components in roles/)
+__pycache__/
+*.pyc
+
+# Local, site-specific real values (real host/IP/serial). Keep the .example tracked.
+host_vars/*.yml
+!host_vars/*.example

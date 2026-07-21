@@ -1,0 +1,75 @@
+---
+# ============================================================
+# Klipper host configuration — single source of truth
+# ============================================================
+
+# --- Identity ----------------------------------------------------------------
+# Named after the box's function (UI-agnostic — survives a Mainsail/Fluidd swap).
+# DNS: klipper.local -> 192.168.1.50 (give the Pi a static lease on your LAN)
+klipper_hostname: klipper
+
+# --- Account the stack runs under -------------------------------------------
+klipper_user: pi
+klipper_group: pi
+klipper_home: "/home/{{ klipper_user }}"
+
+# Modern Klipper "data dir" layout (matches KIAUH / mainsail defaults).
+# Everything user-facing lives here: config, logs, gcodes, comms sockets.
+printer_data: "{{ klipper_home }}/printer_data"
+
+# --- Networking -------------------------------------------------------------
+# LAN subnet trusted by Moonraker (desktop + OrcaSlicer live here).
+lan_subnet: "192.168.1.0/24"
+# Additional trusted subnets (e.g. a second VLAN). Public default = none; add real
+# ones via host_vars. Appended after lan_subnet in Moonraker's trusted_clients.
+lan_subnets_extra: []
+moonraker_port: 7125
+ui_port: 80              # nginx serves Mainsail here
+
+# --- Repositories (host side only — no MCU firmware build here) -------------
+# Core One Klipper FORK (private; the committed custom port = no more "dirty").
+# SSH URL -> the Pi pulls via its read-only deploy key (see base role). The fork
+# is SOURCE only; printer.cfg/boards/h5 configs live here in coreone-host.
+klipper_repo: "git@github.com:packerlschupfer/coreone-firmware.git"
+klipper_branch: "main"
+# Moonraker FORK (public) — our coreone branch commits the soft_abort component
+# (graceful out-of-band abort), so the clone carries it; update_manager tracks the
+# fork clean. Public repo -> no deploy key. Rebase coreone onto upstream on updates.
+moonraker_repo: "https://github.com/packerlschupfer/moonraker.git"
+moonraker_branch: "coreone"
+
+# Mainsail is a static web app shipped as a release zip.
+# Default = the official upstream. Override mainsail_repo per-host (host_vars) to
+# track a fork's releases instead (e.g. a custom build). Used by both the mainsail
+# download and Moonraker's [update_manager mainsail].
+mainsail_repo: "mainsail-crew/mainsail"
+# "latest" resolves at run time; pin a tag here for reproducibility.
+mainsail_version: "latest"     # e.g. "v2.13.0"
+# sha256 of the mainsail.zip asset. Empty = skip verification (upstream "latest").
+# For the fork's ROLLING core-one.1 release, set this per-roll (host_vars) to the sha
+# the Mainsail chat posts -> it also acts as the redeploy idempotence key.
+mainsail_zip_sha256: ""
+mainsail_dir: "{{ klipper_home }}/mainsail"
+# Foreign files that OTHER components drop into the Mainsail web root and that must
+# survive a rolling redeploy's clean wipe (e.g. Moongate's LAN pairing page).
+mainsail_preserve_files:
+  - moongate-pair.html
+
+# --- Moongate (optional remote-access plugin) -------------------------------
+# Disabled by default in the public starter. Enable per-host via host_vars
+# (moongate_enabled: true). Deployed from UPSTREAM by default; to reactivate a
+# fork, override moongate_repo/branch. When enabled, the moonraker role templates
+# moongate's [update_manager] section (so a converge won't wipe it) and excludes
+# its symlinked component from ~/moonraker git status (keeps the updater is_valid).
+moongate_enabled: false
+moongate_repo: "https://github.com/PEEKYPAUL/moongate.git"
+moongate_branch: "master"
+moongate_dir: "{{ klipper_home }}/moongate"
+
+# --- MCU serial -------------------------------------------------------------
+# placeholder = the known "no real MCU" holding state.
+# mcu_serial   = the real F427 once our Klipper is flashed + enumerates;
+#                templated into boards/xbuddy.cfg [mcu] by the printer_config role.
+mcu_serial_placeholder: "/tmp/klipper_host_mcu"
+# Replace XXXX with your board's real id from: ls /dev/serial/by-id/*
+mcu_serial: "/dev/serial/by-id/usb-Klipper_stm32f427xx_XXXXXXXXXXXXXXXXXXXXXXXX-if00"

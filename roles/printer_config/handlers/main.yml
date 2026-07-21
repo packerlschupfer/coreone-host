@@ -1,0 +1,6 @@
+---
+- name: restart klipper
+  become: true
+  ansible.builtin.systemd:
+    name: klipper
+    state: restarted

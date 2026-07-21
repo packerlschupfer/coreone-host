@@ -1,0 +1,31 @@
+---
+# Klipper MCU auto-recovery: udev rule -> oneshot systemd service -> recover
+# script. Recovers klippy after the F427/H503 re-enumerates, covering both a
+# cold boot (FIRMWARE_RESTART) and a mid-session USB re-enumeration (escalates to
+# `systemctl restart klipper`). See roles/mcu_recovery/files/ for the logic.
+
+- name: Install MCU auto-recover script
+  ansible.builtin.copy:
+    src: klipper-mcu-recover.sh
+    dest: /usr/local/bin/klipper-mcu-recover.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install MCU auto-recover systemd unit
+  ansible.builtin.copy:
+    src: klipper-mcu-recover.service
+    dest: /etc/systemd/system/klipper-mcu-recover.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd (mcu_recovery)
+
+- name: Install MCU auto-recover udev rule
+  ansible.builtin.copy:
+    src: 99-klipper-mcu-recover.rules
+    dest: /etc/udev/rules.d/99-klipper-mcu-recover.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload udev rules

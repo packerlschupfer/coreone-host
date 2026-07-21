@@ -1,0 +1,49 @@
+# {{ ansible_managed }}
+# Mainsail static app + reverse proxy to Moonraker.
+# Based on the upstream mainsail-crew/mainsail sample.
+
+upstream apiserver {
+    ip_hash;
+    server 127.0.0.1:{{ moonraker_port }};
+}
+
+server {
+    listen {{ ui_port }} default_server;
+    listen [::]:{{ ui_port }} default_server;
+
+    access_log /var/log/nginx/mainsail-access.log;
+    error_log  /var/log/nginx/mainsail-error.log;
+
+    # Big uploads (gcode from OrcaSlicer)
+    client_max_body_size 0;
+    proxy_request_buffering off;
+
+    root {{ mainsail_dir }};
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # ---- Moonraker API ----
+    location = /websocket {
+        proxy_pass http://apiserver/websocket;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_read_timeout 86400;
+    }
+
+    location ~ ^/(printer|api|access|machine|server)/ {
+        proxy_pass http://apiserver$request_uri;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Scheme $scheme;
+    }
+
+    location /webcam/ {
+        proxy_pass http://127.0.0.1:8080/;
+    }
+}

@@ -1,0 +1,6 @@
+---
+- name: Restart ustreamer
+  ansible.builtin.systemd:
+    name: ustreamer
+    state: restarted
+    daemon_reload: true

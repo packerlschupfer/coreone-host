@@ -1,0 +1,15 @@
+# Managed by ansible (klipper-host base role).
+# Pin all CPUs to the 'performance' governor at boot. 'ondemand' (RPi OS default)
+# adds wake-up latency on idle->busy transitions, which shows up as klippy feeding
+# the MCU late ("Timer too close" / "Missed scheduling"). Pi 4 thermals handle this.
+[Unit]
+Description=Set CPU governor to performance (klippy MCU timing)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$g"; done'
+
+[Install]
+WantedBy=multi-user.target

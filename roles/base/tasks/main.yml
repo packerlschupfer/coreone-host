@@ -1,0 +1,133 @@
+---
+# Base OS prep: packages every part of the stack needs, the service user,
+# serial-port group membership, and your SSH key for passwordless reruns.
+
+- name: Update apt cache (max 1h old)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install common packages
+  ansible.builtin.apt:
+    name:
+      - git
+      - python3
+      - python3-venv
+      - python3-dev
+      - python3-pip
+      - build-essential
+      - libffi-dev
+      - pkg-config
+      - curl
+      - unzip
+      - nginx-light
+    state: present
+
+- name: Ensure service user exists
+  ansible.builtin.user:
+    name: "{{ klipper_user }}"
+    groups: dialout       # access to /dev/serial/* (the USB-CDC MCU link)
+    append: true
+    shell: /bin/bash
+    state: present
+
+- name: Install desktop SSH public key for passwordless reruns
+  ansible.posix.authorized_key:
+    user: "{{ klipper_user }}"
+    key: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_rsa.pub') }}"
+    state: present
+  # If id_rsa.pub isn't your key, override with -e ssh_pubkey_path=...
+
+- name: Passwordless sudo for the service user (Klipper-host convention)
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/010_{{ klipper_user }}-nopasswd"
+    content: "{{ klipper_user }} ALL=(ALL) NOPASSWD: ALL\n"
+    mode: "0440"
+    validate: "visudo -cf %s"
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ klipper_hostname }}"
+
+- name: Keep /etc/hosts in sync with the hostname (sudo resolves it)
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1\t{{ klipper_hostname }}"
+
+- name: Home dir traversable for nginx (Trixie defaults to 0700)
+  ansible.builtin.file:
+    path: "{{ klipper_home }}"
+    mode: "0751"   # o+x = traverse only; contents stay private
+
+- name: Ensure printer_data skeleton exists
+  ansible.builtin.file:
+    path: "{{ printer_data }}/{{ item }}"
+    state: directory
+    owner: "{{ klipper_user }}"
+    group: "{{ klipper_group }}"
+    mode: "0755"
+  loop:
+    - ""
+    - config
+    - logs
+    - gcodes
+    - comms
+    - systemd
+
+# Bursty background timers starve klippy's real-time move-queue feed mid-print
+# -> MCU "Timer too close" shutdown (killed prints). A Klipper appliance does not
+# need automatic apt churn or man-page reindexing; mask them (manual apt still
+# works). Unmask with: systemctl unmask <timer>.
+- name: Mask bursty background timers (prevent mid-print "Timer too close")
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    masked: true
+    state: stopped
+  loop:
+    - apt-daily.timer            # automatic apt package-list download
+    - apt-daily-upgrade.timer    # unattended-upgrades (heavy; can restart services mid-print)
+    - man-db.timer               # daily man-page index rebuild (CPU-heavy, pointless headless)
+
+# The host runs on eth0; the onboard wifi + bluetooth radios are unused and add
+# IRQ/firmware overhead (BT's mpris-proxy/dbus churn has starved klippy before).
+# Disable both at the firmware level so the devices never appear. Takes effect on
+# the NEXT REBOOT. (Re-enable: remove these lines + reboot.)
+- name: Disable unused wifi + bluetooth radios (needs reboot)
+  ansible.builtin.blockinfile:
+    path: /boot/firmware/config.txt
+    marker: "# {mark} ANSIBLE klipper-host radio disable"
+    block: |
+      dtoverlay=disable-wifi
+      dtoverlay=disable-bt
+  register: radio_disable
+
+# 'ondemand' (RPi OS default) adds wake-up latency on idle->busy transitions that
+# shows up as klippy feeding the MCU late ("Timer too close" / "Missed scheduling").
+# Force 'performance' at boot via a oneshot unit (Pi 4 thermals handle it). Pairs with
+# klippy SCHED_FIFO + core-3 pinning in klipper.service (host-timing hardening).
+- name: Install CPU performance-governor unit
+  ansible.builtin.copy:
+    src: cpu-governor-performance.service
+    dest: /etc/systemd/system/cpu-governor-performance.service
+    mode: "0644"
+  register: cpu_gov_unit
+
+- name: Enable + start CPU performance-governor
+  ansible.builtin.systemd:
+    name: cpu-governor-performance.service
+    enabled: true
+    state: started
+    daemon_reload: "{{ cpu_gov_unit.changed }}"
+
+# Hard CPU isolation: keep the general scheduler + IRQs entirely off core 3 so klippy
+# (CPUAffinity=3 in klipper.service) owns it exclusively -- the strongest fix for the
+# transient-preemption "Missed scheduling" shutdowns. cmdline is ONE line; append after
+# rootwait, only if absent (idempotent). Takes effect on the NEXT REBOOT.
+# (Safe to reboot only with the USB-backpower data-only cables installed -- see README.)
+- name: Hard-isolate core 3 for klippy (isolcpus=3 + irqaffinity=0-2, needs reboot)
+  ansible.builtin.replace:
+    path: /boot/firmware/cmdline.txt
+    regexp: '\brootwait\b(?!.*isolcpus)'
+    replace: 'rootwait isolcpus=3 irqaffinity=0-2'
+  register: cmdline_isol

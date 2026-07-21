@@ -1,0 +1,44 @@
+---
+# ============================================================
+# Provision a Raspberry Pi 4 as a Klipper host for the
+# Prusa Core One+ (custom Klipper MCU port).
+#
+#   klippy + moonraker + mainsail + nginx, started on boot.
+#
+# Run AFTER a fresh Raspberry Pi OS Lite (Bookworm 64-bit) flash.
+# See README.md for the flash + first-boot steps.
+# ============================================================
+
+- name: Provision Klipper host
+  hosts: klipper
+  become: true
+  gather_facts: true
+
+  # Each role is tagged with its name so a single concern can be re-run in isolation,
+  # e.g. `ansible-playbook site.yml --tags mainsail` for a rolling Mainsail deploy
+  # (avoids re-running base/klipper/printer_config, which would restart klippy).
+  roles:
+    - role: base            # apt update, packages, user, ssh key, dialout group
+      tags: [base]
+    - role: klipper         # klippy host: repo, venv, systemd service
+      tags: [klipper]
+    - role: moonraker       # API server on :7125
+      tags: [moonraker]
+    - role: mcu_recovery    # udev->oneshot auto-recover klippy on MCU re-enumeration
+      tags: [mcu_recovery]
+    - role: printer_config  # placeholder printer.cfg ([mcu] -> no-MCU state)
+      tags: [printer_config]
+    - role: mainsail        # static UI + nginx on :80 (incl. /webcam/ proxy)
+      tags: [mainsail]
+    - role: webcam          # ustreamer MJPEG stream for printwatch (127.0.0.1:8080)
+      tags: [webcam]
+
+  post_tasks:
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "Klipper host ready on {{ ansible_host | default(inventory_hostname) }}"
+          - "Mainsail UI:   http://{{ ansible_host }}/"
+          - "Moonraker API: http://{{ ansible_host }}:{{ moonraker_port }}/printer/info"
+          - "printer.cfg:   {{ printer_data }}/config/printer.cfg"
+          - "Next: MCU-port chat sets the real [mcu] serial path and restarts klipper."

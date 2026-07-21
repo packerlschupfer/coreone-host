@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+[Unit]
+Description=ustreamer MJPEG camera streamer (printwatch)
+After=network-online.target
+
+[Service]
+User={{ klipper_user }}
+SupplementaryGroups=video
+ExecStart=/usr/bin/ustreamer --device={{ webcam_device }} --format=MJPEG --resolution={{ webcam_resolution }} --desired-fps={{ webcam_fps }} --host={{ webcam_host }} --port={{ webcam_port }} --drop-same-frames=30 --slowdown
+Restart=always
+RestartSec=3
+Nice=10
+# Keep MJPEG streaming off klippy's dedicated core (3) — camera bursts must never
+# preempt the MCU move-queue feed (especially once a real camera is on a USB3 port).
+CPUAffinity=0 1 2
+
+[Install]
+WantedBy=multi-user.target

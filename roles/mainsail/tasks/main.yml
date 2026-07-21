@@ -1,0 +1,117 @@
+---
+# Mainsail static UI + nginx reverse proxy to Moonraker, served on :80.
+
+- name: Resolve latest Mainsail download URL
+  ansible.builtin.set_fact:
+    mainsail_url: >-
+      {% if mainsail_version == 'latest' -%}
+      https://github.com/{{ mainsail_repo }}/releases/latest/download/mainsail.zip
+      {%- else -%}
+      https://github.com/{{ mainsail_repo }}/releases/download/{{ mainsail_version }}/mainsail.zip
+      {%- endif %}
+
+- name: Ensure mainsail dir exists
+  ansible.builtin.file:
+    path: "{{ mainsail_dir }}"
+    state: directory
+    owner: "{{ klipper_user }}"
+    group: "{{ klipper_group }}"
+    mode: "0755"
+
+# The fork uses a ROLLING version string (v2.18.0-core-one.1 stays fixed, tag
+# force-moved forward as features land). Moonraker's web-updater can't detect a roll
+# (version compares equal), so this role IS the deploy path: sha-verify the asset,
+# back up the current web root, wipe (incl. dotfiles -- else a stale .version blocks
+# unzip) + extract. Idempotent on the sha marker so a re-run only redeploys a new roll.
+# Per-roll: bump mainsail_zip_sha256 (posted by the Mainsail chat) + re-run.
+- name: Read deployed Mainsail sha marker
+  ansible.builtin.slurp:
+    src: "{{ mainsail_dir }}/.deployed-sha256"
+  register: mainsail_marker
+  failed_when: false
+  changed_when: false
+
+- name: Download Mainsail asset (sha-verified when mainsail_zip_sha256 is set)
+  ansible.builtin.get_url:
+    url: "{{ mainsail_url }}"
+    dest: /tmp/mainsail.zip
+    checksum: "{{ ('sha256:' + mainsail_zip_sha256) if mainsail_zip_sha256 | default('') else omit }}"
+    force: true
+    mode: "0644"
+  register: mainsail_dl
+  when: >-
+    mainsail_zip_sha256 | default('') == '' or
+    (mainsail_marker.content | default('') | b64decode | trim) != mainsail_zip_sha256
+
+- name: Deploy Mainsail (backup previous + clean extract)
+  when: mainsail_dl is defined and mainsail_dl is changed
+  block:
+    - name: Timestamped backup of the current web root (rollback)
+      ansible.builtin.command:
+        cmd: "cp -a {{ mainsail_dir }} {{ mainsail_dir }}.bak-{{ ansible_facts.date_time.iso8601_basic_short }}"
+        creates: "{{ mainsail_dir }}.bak-{{ ansible_facts.date_time.iso8601_basic_short }}"
+
+    - name: Wipe web root (incl. dotfiles) + extract, preserving foreign files
+      ansible.builtin.shell:
+        # The clean wipe (needed so stale hashed Mainsail assets don't accumulate) would
+        # also delete files OTHER components drop into the web root -- e.g. Moongate's
+        # moongate-pair.html LAN pairing page. Preserve the configured list across it.
+        cmd: |
+          set -e
+          pres=$(mktemp -d)
+          for f in {{ mainsail_preserve_files | default([]) | join(' ') }}; do
+            [ -e "{{ mainsail_dir }}/$f" ] && cp -a "{{ mainsail_dir }}/$f" "$pres/" || true
+          done
+          find {{ mainsail_dir }} -mindepth 1 -delete
+          unzip -oq /tmp/mainsail.zip -d {{ mainsail_dir }}
+          for f in {{ mainsail_preserve_files | default([]) | join(' ') }}; do
+            [ -e "$pres/$f" ] && cp -a "$pres/$f" "{{ mainsail_dir }}/" || true
+          done
+          rm -rf "$pres"
+
+    - name: Restore ownership on the web root
+      ansible.builtin.file:
+        path: "{{ mainsail_dir }}"
+        state: directory
+        owner: "{{ klipper_user }}"
+        group: "{{ klipper_group }}"
+        recurse: true
+
+    - name: Record deployed sha marker (idempotence key for rolling releases)
+      ansible.builtin.copy:
+        content: "{{ mainsail_zip_sha256 | default('') }}\n"
+        dest: "{{ mainsail_dir }}/.deployed-sha256"
+        owner: "{{ klipper_user }}"
+        group: "{{ klipper_group }}"
+        mode: "0644"
+
+    # Out-of-band extract leaves Moonraker's version_info stale (it never saw the
+    # roll via update/client) -> the Update Manager panel keeps showing the previous
+    # version until it re-reads release_info.json. Nudge it so the panel matches.
+    - name: Refresh Moonraker's Mainsail version_info (panel matches the deployed roll)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ moonraker_port | default('7125') }}/machine/update/refresh?name=mainsail"
+        method: POST
+        status_code: 200
+      failed_when: false
+      changed_when: false
+
+- name: Remove default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Restart nginx
+
+- name: Install Mainsail nginx site
+  ansible.builtin.template:
+    src: mainsail.nginx.j2
+    dest: /etc/nginx/sites-available/mainsail
+    mode: "0644"
+  notify: Restart nginx
+
+- name: Enable Mainsail nginx site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/mainsail
+    dest: /etc/nginx/sites-enabled/mainsail
+    state: link
+  notify: Restart nginx
