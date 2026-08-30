@@ -127,6 +127,21 @@ values must be measured on *your* motors (cogging calibration; see `extras/phase
 — do **not** copy another machine's, wrong values make motion worse. To run a given print
 without phase-stepping, pass `PHASE_STEP=0` (or `SAFE_PRINT_MODE VALUE=1`).
 
+### Filament material — declare it for newly-sliced prints
+
+The config tracks the **loaded material** so a print can refuse to start on the wrong one.
+Newly-sliced files carry a `MATERIAL=` from the slicer; `FILAMENT_CHECK` (in `PRINT_START`)
+compares it against what's loaded and **aborts with an explicit message** if they disagree,
+until you run `SET_FILAMENT TYPE=…`.
+
+- **Your existing prints are unaffected.** Files sliced before this change have no
+  `MATERIAL=`, so `FILAMENT_CHECK` returns immediately — every reprint of an older slice
+  behaves exactly as before. There is no latent abort risk in your back catalogue.
+- **The surprise is first-run only, on newly-sliced files.** `PLA` → `PLA` is silent, and
+  `PLA-CF` continues (same base material); but a fresh **PETG / ASA / FLEX** slice against a
+  recorded `PLA` aborts until you declare it with `SET_FILAMENT TYPE=x`. That's the guard
+  doing its job, not a fault.
+
 ## Hardware notes
 
 ### USB backpower — boot-order gotcha (root is on USB)
