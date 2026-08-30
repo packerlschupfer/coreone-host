@@ -86,7 +86,7 @@
     "z_hop": [
         "1.0"
     ],
-    "machine_start_gcode": "PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]{if chamber_temperature[0] > 25} CHAMBER_MIN={chamber_temperature[0] - 5} SOAK=5{endif}\nSET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]",
+    "machine_start_gcode": "PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single] CHAMBER=[chamber_temperature]{if chamber_temperature[0] > 25} CHAMBER_MIN={chamber_temperature[0] - 5} SOAK=5{endif} MATERIAL=[filament_type] MVS=[filament_max_volumetric_speed]\nSET_PRINT_STATS_INFO TOTAL_LAYER=[total_layer_count]",
     "machine_end_gcode": "PRINT_END",
     "before_layer_change_gcode": "PLR_CHECKPOINT\n_ACCEL_TAPER Z=[layer_z]",
     "layer_change_gcode": "SET_PRINT_STATS_INFO CURRENT_LAYER=[layer_num]",
