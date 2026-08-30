@@ -67,9 +67,11 @@ microsteps: 16
 # and Prusa ships both. There is no single correct value -- upstream deleted their default
 # (Configuration_COREONE.h:470-472, HAS_15GT_BELTS on for COREONE) and made it a runtime
 # hardware flag (`belts_15gt_installed`) that defaults FALSE but is set TRUE for NEW installs.
-# WHICH MACHINES: 1.5GT ships on **Gen2 Core One and on INDX** -- including machines converted by
-# an upgrade/conversion kit, since the kit changes the belts. **Gen1 Core One is 2GT.** Go by
-# generation/variant, not by purchase date: "is it Gen2 or INDX" is answerable, "is it new" is not.
+# WHICH MACHINES: 1.5GT ships on the **Gen2 Core One**, and reaches any machine converted by an
+# upgrade/conversion kit (the kit swaps the belts). **Gen1 Core One is 2GT.** INDX does NOT
+# strictly require 1.5GT -- but Prusa steers INDX buyers to the Gen2 upgrade, so an INDX is
+# likely on 1.5GT in practice. Treat the model name as a hint, not proof: go by the belt actually
+# installed (tooth pitch, or the printer's hardware-config page), not by variant or purchase date.
 # ⚠⚠ GEN2 IS NOT JUST A BELT. Gen2 also ships a NOZZLE CLEANER (a physical pad in FRONT of the
 # bed, Prusa's touchpoint is y = -15.0) and Gen2 expansion joints. This config knows nothing
 # about a cleaner, and our Y homes to position_endstop -19 -- i.e. PAST y=-15. Whether that is
