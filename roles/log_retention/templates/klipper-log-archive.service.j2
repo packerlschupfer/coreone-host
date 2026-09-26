@@ -1,0 +1,11 @@
+[Unit]
+Description=Archive klippy/moonraker rotated logs beyond their built-in retention
+Documentation=https://github.com/packerlschupfer/coreone-firmware
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/klipper-log-archive.sh {{ printer_data }}/logs {{ klipper_log_archive_days }}
+User={{ klipper_user }}
+Group={{ klipper_group }}
+Nice=10
+IOSchedulingClass=idle

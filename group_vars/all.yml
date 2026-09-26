@@ -26,6 +26,16 @@ lan_subnets_extra: []
 moonraker_port: 7125
 ui_port: 80              # nginx serves Mainsail here
 
+# --- Log retention (post-mortem diagnosis) ----------------------------------
+# klippy rotates its own log at midnight and keeps only 5 days (hardcoded in
+# klippy/queuelogger.py). We don't patch that vendored file; the log_retention role
+# archives the rotated files to printer_data/logs/archive/ and ages THOSE out here.
+# nginx's mainsail-access.log is rotated by the distro logrotate stanza (default 14).
+# An intermittent fault is diagnosed from the occurrence you still have logs for --
+# 60 days is a few MB of gzip and spans the gap that lost us the 2026-07 shutdowns.
+klipper_log_archive_days: 60
+nginx_log_retain_days: 60
+
 # --- Repositories (host side only — no MCU firmware build here) -------------
 # Core One Klipper FORK (private; the committed custom port = no more "dirty").
 # SSH URL -> the Pi pulls via its read-only deploy key (see base role). The fork

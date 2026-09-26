@@ -26,6 +26,8 @@
       tags: [moonraker]
     - role: mcu_recovery    # udev->oneshot auto-recover klippy on MCU re-enumeration
       tags: [mcu_recovery]
+    - role: log_retention   # keep klippy/nginx logs long enough to diagnose rare faults
+      tags: [log_retention]
     - role: printer_config  # placeholder printer.cfg ([mcu] -> no-MCU state)
       tags: [printer_config]
     - role: mainsail        # static UI + nginx on :80 (incl. /webcam/ proxy)

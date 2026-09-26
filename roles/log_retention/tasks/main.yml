@@ -1,0 +1,63 @@
+---
+# Log retention for post-mortem diagnosis.
+#
+# Two independent mechanisms, because the two logs rotate by different machinery:
+#
+#   klippy.log / moonraker.log -- rotated by the DAEMON itself (klippy/queuelogger.py:27,
+#     TimedRotatingFileHandler when='midnight', backupCount=5). Not configurable outside
+#     Klipper source, so we archive the rotated files rather than patch a vendored one.
+#   /var/log/nginx/mainsail-access.log -- rotated by logrotate via the distro's
+#     /etc/logrotate.d/nginx (`rotate 14`). That one we can simply extend.
+#
+# Motivation, so the next person knows why the defaults were not left alone: diagnosing an
+# INTERMITTENT fault means diagnosing the occurrence you still hold evidence for. Three
+# klippy_shutdown events in 2026-07 could never be classified because their logs aged out,
+# and the webcam-load hypothesis for a 2026-09 shutdown was only testable at all because
+# nginx's 14 days happened to still cover it -- a fortnight later and it would have stood
+# unfalsified for want of data. Disk here is far cheaper than a lost occurrence.
+
+- name: Install klippy log archive script
+  ansible.builtin.copy:
+    src: klipper-log-archive.sh
+    dest: /usr/local/bin/klipper-log-archive.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install klippy log archive systemd service
+  ansible.builtin.template:
+    src: klipper-log-archive.service.j2
+    dest: /etc/systemd/system/klipper-log-archive.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd (log_retention)
+
+- name: Install klippy log archive systemd timer
+  ansible.builtin.copy:
+    src: klipper-log-archive.timer
+    dest: /etc/systemd/system/klipper-log-archive.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd (log_retention)
+
+- name: Enable and start the klippy log archive timer
+  ansible.builtin.systemd:
+    name: klipper-log-archive.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# Extend nginx retention in place rather than adding a second logrotate stanza: a separate
+# config matching the same path makes logrotate emit "duplicate log entry" and skip one of
+# them, with which one wins depending on filename order. One edit to the existing `rotate`
+# is unambiguous. An nginx package upgrade may restore the distro file -- a re-run of this
+# role puts it back, which is why it lives in Ansible and was not just typed on the Pi.
+- name: Extend nginx (mainsail-access.log) retention
+  ansible.builtin.lineinfile:
+    path: /etc/logrotate.d/nginx
+    regexp: '^(\s*)rotate\s+\d+\s*$'
+    line: '\g<1>rotate {{ nginx_log_retain_days }}'
+    backrefs: true
+  when: nginx_log_retain_days is defined

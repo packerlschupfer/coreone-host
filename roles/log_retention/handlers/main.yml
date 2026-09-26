@@ -1,0 +1,4 @@
+---
+- name: Reload systemd (log_retention)
+  ansible.builtin.systemd:
+    daemon_reload: true
