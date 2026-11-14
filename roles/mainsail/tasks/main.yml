@@ -9,6 +9,7 @@
       {%- else -%}
       https://github.com/{{ mainsail_repo }}/releases/download/{{ mainsail_version }}/mainsail.zip
       {%- endif %}
+  when: mainsail_deploy_enabled | default(true)
 
 - name: Ensure mainsail dir exists
   ansible.builtin.file:
@@ -30,6 +31,7 @@
   register: mainsail_marker
   failed_when: false
   changed_when: false
+  when: mainsail_deploy_enabled | default(true)
 
 - name: Download Mainsail asset (sha-verified when mainsail_zip_sha256 is set)
   ansible.builtin.get_url:
@@ -40,8 +42,9 @@
     mode: "0644"
   register: mainsail_dl
   when: >-
-    mainsail_zip_sha256 | default('') == '' or
-    (mainsail_marker.content | default('') | b64decode | trim) != mainsail_zip_sha256
+    (mainsail_deploy_enabled | default(true)) and
+    (mainsail_zip_sha256 | default('') == '' or
+     (mainsail_marker.content | default('') | b64decode | trim) != mainsail_zip_sha256)
 
 - name: Deploy Mainsail (backup previous + clean extract)
   when: mainsail_dl is defined and mainsail_dl is changed
@@ -95,6 +98,26 @@
         status_code: 200
       failed_when: false
       changed_when: false
+
+# Independent of the deploy path: Moonraker's web updater (the Mainsail "Update" button,
+# now the deploy path on this host) wipe-then-extracts with NO zip validation, so a failed
+# extract loses the persistent_files for good. Keep a role-side backup and restore it if the
+# web root lost it. Runs regardless of mainsail_deploy_enabled.
+- name: Back up / restore preserved foreign web-root files (moongate-pair.html)
+  become: true
+  become_user: "{{ klipper_user }}"
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      mkdir -p "{{ mainsail_preserve_backup_dir }}"
+      for f in {{ mainsail_preserve_files | default([]) | join(' ') }}; do
+        if [ -e "{{ mainsail_dir }}/$f" ]; then
+          cp -a "{{ mainsail_dir }}/$f" "{{ mainsail_preserve_backup_dir }}/$f"
+        elif [ -e "{{ mainsail_preserve_backup_dir }}/$f" ]; then
+          cp -a "{{ mainsail_preserve_backup_dir }}/$f" "{{ mainsail_dir }}/$f"
+        fi
+      done
+  changed_when: false
 
 - name: Remove default nginx site
   ansible.builtin.file:

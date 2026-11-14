@@ -74,6 +74,14 @@ mainsail_dir: "{{ klipper_home }}/mainsail"
 # survive a rolling redeploy's clean wipe (e.g. Moongate's LAN pairing page).
 mainsail_preserve_files:
   - moongate-pair.html
+# When true (default) this role IS the Mainsail deploy path (download + clean extract).
+# Set false to hand deployment to Moonraker's web update_manager (the "Update" button);
+# the role then only ensures the dir, keeps nginx, and backs up/restores the preserve
+# files -- it does NOT download or extract Mainsail. (Host override lives in host_vars.)
+mainsail_deploy_enabled: true
+# Role-side backup of mainsail_preserve_files so a failed Moonraker web-update (which
+# wipe-then-extracts with NO zip validation) can't lose them for good -- a re-run restores.
+mainsail_preserve_backup_dir: "{{ klipper_home }}/.mainsail-preserve"
 
 # --- Moongate (optional remote-access plugin) -------------------------------
 # Disabled by default in the public starter. Enable per-host via host_vars

@@ -40,6 +40,16 @@ type: web
 channel: stable
 repo: {{ mainsail_repo }}
 path: {{ mainsail_dir }}
+{% if mainsail_preserve_files | default([]) %}
+# Foreign files OTHER components drop into the web root (Moongate's pairing page).
+# Moonraker's web updater wipe-then-extracts, so without this they are lost on every
+# Update. TOP-LEVEL names only. (The host also keeps a role-side backup -- a failed
+# extract loses persistent_files for good; Moonraker does no zip validation.)
+persistent_files:
+{% for f in mainsail_preserve_files %}
+  {{ f }}
+{% endfor %}
+{% endif %}
 
 # Track the Core One Klipper FORK (committed port) as a git_repo, not vanilla
 # Klipper. The fork has real upstream ancestry so this shows CLEAN (no "dirty"
