@@ -49,6 +49,9 @@ type: git_repo
 path: {{ klipper_home }}/klipper
 origin: {{ klipper_repo }}
 primary_branch: {{ klipper_branch }}
+# Pin to the exact release commit so Update is a no-op and Recover resets to the
+# pin (not to the branch tip) -- the pin is an ancestor of the FF-only rel branch.
+pinned_commit: {{ klipper_pinned_sha }}
 managed_services: klipper
 
 # Track Moonraker's OWN repo as the Core One FORK on branch 'coreone', NOT stock

@@ -26,6 +26,29 @@
     update: false        # don't auto-pull on every run; bump deliberately
   register: klipper_clone
 
+# Safety net for the pin: klipper_branch (rel/* FF-only branch) and
+# klipper_pinned_sha must agree. The git module checks out the branch TIP; if
+# someone bumps one var and not the other, or the branch ever advanced past the
+# pin, this stops the play before deploying a mismatched host against the MCU.
+- name: Resolve the checked-out Klipper HEAD
+  become: true
+  become_user: "{{ klipper_user }}"
+  ansible.builtin.command:
+    cmd: git rev-parse HEAD
+    chdir: "{{ klipper_home }}/klipper"
+  register: klipper_head
+  changed_when: false
+
+- name: Assert Klipper is on the pinned release commit
+  ansible.builtin.assert:
+    that:
+      - klipper_head.stdout == klipper_pinned_sha
+    fail_msg: >-
+      Klipper HEAD {{ klipper_head.stdout }} != pinned {{ klipper_pinned_sha }} --
+      klipper_branch ({{ klipper_branch }}) and klipper_pinned_sha are out of sync
+      (or the rel branch advanced past the pin). Bump BOTH together.
+    success_msg: "Klipper pinned at {{ klipper_pinned_sha }} ({{ klipper_branch }})"
+
 - name: Create klippy virtualenv (with access to system site-packages for numpy/scipy)
   become: true
   become_user: "{{ klipper_user }}"
