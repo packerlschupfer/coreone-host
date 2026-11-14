@@ -80,9 +80,16 @@
     owner: "{{ klipper_user }}"
     group: "{{ klipper_group }}"
     mode: "0644"
+    # moongate-tunnel is listed only when Moongate is enabled. Without this guard
+    # a full `--tags moonraker` run re-renders this file WITHOUT moongate-tunnel
+    # and strips Moonraker's permission to manage that service (it was added
+    # out-of-band by the Moongate installer). moongate_enabled lives in host_vars.
     content: |
       klipper
       moonraker
+      {% if moongate_enabled | default(false) %}
+      moongate-tunnel
+      {% endif %}
 
 - name: Install moonraker systemd unit
   ansible.builtin.template:
