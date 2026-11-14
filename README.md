@@ -7,6 +7,20 @@ on boot and reproducible from one `ansible-playbook` run.
 This is the **host side only** — no MCU firmware is built here. The firmware for
 the xBuddy board (STM32F427) is built and flashed separately.
 
+## The custom Klipper fork (required)
+
+Both the klippy host extras and the xBuddy (STM32F427) MCU firmware come from a
+custom Klipper fork: **[packerlschupfer/coreone-firmware](https://github.com/packerlschupfer/coreone-firmware)**.
+The playbook clones it automatically (`klipper_repo` in `group_vars/all.yml`), so
+a normal `ansible-playbook` run already pulls everything in.
+
+This matters only if you read this repo on its own: the deployed `printer.cfg`
+references ~21 custom klippy extras that stock Klipper does not have (e.g.
+`gc_tune`, `filaments`, `phase_exec`, `crash_detect`, `estall_detect`,
+`load_cell_probe`, `hx71x_filament_sensor`, `[display] lcd_type: ili9488`), plus
+patches to a few stock modules — so `printer.cfg` will not start against vanilla
+Klipper. Use the fork above, not upstream Klipper.
+
 ## What it sets up
 
 - `klippy` (host) + `moonraker` (API on :7125) + `mainsail` (UI on :80 via nginx)
