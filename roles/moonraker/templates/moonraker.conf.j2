@@ -43,7 +43,7 @@ path: {{ mainsail_dir }}
 
 # Track the Core One Klipper FORK (committed port) as a git_repo, not vanilla
 # Klipper. The fork has real upstream ancestry so this shows CLEAN (no "dirty"
-# hot-patch). Private repo -> the Pi authenticates via its read-only deploy key.
+# hot-patch). Public repo -> no deploy key needed.
 [update_manager klipper]
 type: git_repo
 path: {{ klipper_home }}/klipper

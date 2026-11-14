@@ -37,10 +37,10 @@ klipper_log_archive_days: 60
 nginx_log_retain_days: 60
 
 # --- Repositories (host side only — no MCU firmware build here) -------------
-# Core One Klipper FORK (private; the committed custom port = no more "dirty").
-# SSH URL -> the Pi pulls via its read-only deploy key (see base role). The fork
+# Core One Klipper FORK (public; the committed custom port = no more "dirty").
+# HTTPS URL -> public clone, no deploy key needed. The fork
 # is SOURCE only; printer.cfg/boards/h5 configs live here in coreone-host.
-klipper_repo: "git@github.com:packerlschupfer/coreone-firmware.git"
+klipper_repo: "https://github.com/packerlschupfer/coreone-firmware.git"
 klipper_branch: "main"
 # Moonraker FORK (public) — our coreone branch commits the soft_abort component
 # (graceful out-of-band abort), so the clone carries it; update_manager tracks the
