@@ -229,7 +229,15 @@ sense_resistor: 0.22        # xBuddy Z_RSENSE (Prusa-authoritative). Klipper's t
                             # so without this we ran HALF current (~0.3A actual) -> weak Z, stalls after
                             # Z_ALIGN. 0.22 makes run_current the real 0.6A.
 hold_current: 0.6           # = run (Prusa HOLD_MULTIPLIER 1); also caps idle hold below the ~0.96A
-                            # default-max at R=0.22 (Z leadscrew self-locks, so this is plenty).
+                            # default-max at R=0.22.
+                            # LOAD-BEARING: this current is what holds the bed up at idle.
+                            # The screw does NOT self-lock. rotation_distance 8 with no gear_ratio
+                            # is an 8mm lead; at a ~7.25mm pitch diameter that is a 19.4deg lead
+                            # angle against at most 14.0deg of friction angle (mu<=0.25), so it
+                            # backdrives -- an 8mm lead on an 8mm screw is multi-start precisely
+                            # because it does. An earlier version of this comment asserted
+                            # self-locking; do NOT lower hold_current on that basis, or the bed
+                            # settles under its own weight. (coreone-slicer, 2026-11-14.)
 driver_SGT: 4              # Z_STALL_SENSITIVITY 4 (Z sensorless not used yet — loadcell probe)
 interpolate: True
 driver_TOFF: 3             # 24V chopper = Prusa CHOPPER_PRUSAMK3_24V {toff3,hend-2,hstrt6}
