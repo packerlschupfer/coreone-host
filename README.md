@@ -17,7 +17,7 @@ a normal `ansible-playbook` run already pulls everything in.
 This matters only if you read this repo on its own: the deployed `printer.cfg`
 references ~21 custom klippy extras that stock Klipper does not have (e.g.
 `gc_tune`, `filaments`, `phase_exec`, `crash_detect`, `estall_detect`,
-`load_cell_probe`, `hx71x_filament_sensor`, `[display] lcd_type: ili9488`), plus
+`hx71x_filament_sensor`, `[display] lcd_type: ili9488`), plus
 patches to a few stock modules — so `printer.cfg` will not start against vanilla
 Klipper. Use the fork above, not upstream Klipper.
 
