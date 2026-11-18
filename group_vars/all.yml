@@ -50,8 +50,8 @@ klipper_repo: "https://github.com/packerlschupfer/coreone-firmware.git"
 # both stay on the pin and can never yank the host ahead of the flashed MCU
 # (main is a squash-SIBLING of each release, so tracking main would let Recover
 # reset onto it). Move to a new release by bumping BOTH values together.
-klipper_branch: "rel/v0.13.0-core-one.2"
-klipper_pinned_sha: "bd101b7271badec5ceeddc53ba6ed78353f90cda"
+klipper_branch: "rel/v0.13.0-core-one.3"
+klipper_pinned_sha: "2c1a001a24d1c67021943e28ba46a33d8735b977"
 # Moonraker FORK (public) — our coreone branch commits the soft_abort component
 # (graceful out-of-band abort), so the clone carries it; update_manager tracks the
 # fork clean. Public repo -> no deploy key. Rebase coreone onto upstream on updates.
