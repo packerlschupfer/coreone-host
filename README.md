@@ -184,3 +184,11 @@ SSD). With VBUS cut on the MCU links, boot order no longer matters.
 **Confirm test (no parts):** with the printer ON, unplug *both* MCU USB cables from
 the Pi, then cold-boot — if it boots fine (ethernet up) the backpower diagnosis is
 confirmed; hot-plug the MCUs after it's up.
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0** (GPL-3.0) — see [LICENSE](LICENSE) for the full text.
+
+It is a derivative work of GPL-3.0 upstreams: the [Klipper](https://github.com/Klipper3d/klipper) firmware and its configuration conventions, and Prusa's Original Prusa Core One / Buddy firmware and Klipper config (hardware definitions in `boards/`, tuning defaults, and several standard macros). Those portions remain under GPL-3.0; the Ansible roles, custom macros, and host-integration glue are original work distributed under the same license.
+
+Copyright (C) 2026 packerlschupfer
