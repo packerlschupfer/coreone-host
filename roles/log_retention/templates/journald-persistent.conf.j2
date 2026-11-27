@@ -1,0 +1,11 @@
+# Managed by Ansible (log_retention role) -- edit the role + converge, not the Pi.
+# Persistent journald on the USB-SSD root so an intermittent-fault log survives a reboot.
+# Named 95- so it sorts AFTER the Pi OS vendor default 40-rpi-volatile-storage.conf, which sets
+# Storage=volatile (RAM -- sensible for SD cards, wrong here: root is a 229 GB USB SSD). That
+# volatile default is why the 2026-11-23 kernel log was wiped by the recovery reboot, leaving a
+# USB-link shutdown undiagnosable. Explicit Storage=persistent is the only thing that beats an
+# explicit vendor setting -- do not "fix" it back to volatile on this box.
+[Journal]
+Storage=persistent
+SystemMaxUse={{ journald_system_max_use }}
+SystemMaxFileSize={{ journald_system_max_file_size }}

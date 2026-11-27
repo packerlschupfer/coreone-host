@@ -61,3 +61,28 @@
     line: '\g<1>rotate {{ nginx_log_retain_days }}'
     backrefs: true
   when: nginx_log_retain_days is defined
+
+# --- Persistent journald -----------------------------------------------------
+# The Pi OS default keeps journald in RAM (/usr/lib/systemd/journald.conf.d/
+# 40-rpi-volatile-storage.conf, Storage=volatile) to spare SD cards; this box runs a 229 GB USB
+# SSD, and that volatile default is why the 2026-11-23 kernel log was wiped by the recovery
+# reboot. A 95- drop-in sorts after the vendor 40- and forces persistent storage, so kernel/
+# USB/power logs survive a reboot and an intermittent fault is diagnosable from the occurrence.
+- name: Ensure journald drop-in dir exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Make journald persistent (survive reboots for post-mortem)
+  ansible.builtin.template:
+    src: journald-persistent.conf.j2
+    dest: /etc/systemd/journald.conf.d/95-persistent.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Restart systemd-journald
+    - Flush journald to persistent

@@ -101,3 +101,11 @@ moongate_dir: "{{ klipper_home }}/moongate"
 mcu_serial_placeholder: "/tmp/klipper_host_mcu"
 # Replace XXXX with your board's real id from: ls /dev/serial/by-id/*
 mcu_serial: "/dev/serial/by-id/usb-Klipper_stm32f427xx_XXXXXXXXXXXXXXXXXXXXXXXX-if00"
+
+# --- Persistent journald (post-mortem for intermittent faults) --------------
+# The Pi OS vendor default keeps journald volatile (RAM) to protect SD cards; root here is a
+# 229 GB USB SSD, so persistent is safe and lets kernel/USB/power logs survive a reboot -- the
+# gap that wiped the 2026-11-23 kernel log. Deployed by the log_retention role as a 95- drop-in
+# that sorts after the vendor 40-rpi-volatile-storage.conf. Caps kept here, not hard-coded.
+journald_system_max_use: "500M"       # ~0.2% of the SSD; weeks of retention for an intermittent fault
+journald_system_max_file_size: "50M"  # granular rotation so a vacuum never drops a whole month

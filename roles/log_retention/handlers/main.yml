@@ -2,3 +2,12 @@
 - name: Reload systemd (log_retention)
   ansible.builtin.systemd:
     daemon_reload: true
+
+- name: Restart systemd-journald
+  ansible.builtin.systemd:
+    name: systemd-journald
+    state: restarted
+
+- name: Flush journald to persistent
+  ansible.builtin.command: journalctl --flush
+  changed_when: false
